@@ -1,0 +1,28 @@
+*** Settings ***
+Library           RequestsLibrary
+
+*** Keywords ***
+Create S3 Object
+    [Arguments]    ${bucket_name}    ${aws_region}    ${file_path}
+    ${url}=    Set Variable    https://${BUCKET_NAME}.s3.${AWS_REGION}.amazonaws.com/${file_path}
+    Set Test Variable    ${url}    ${url}
+
+Upload File to S3 Bucket
+    [Arguments]    ${file_path}
+    ${url}=    Set Global Variable    ${url}
+    ${headers}=    Create Dictionary    x-amz-acl=public-read
+    ${files}=    Create Dictionary    file=(file.txt, ${file_path})
+    ${response}=    Post Request    ${url}    headers=${headers}    files=${files}
+    Should Be Equal As Strings    ${response.status_code}    200
+
+File Should Exist In S3 Bucket
+    [Arguments]    ${file_path}
+    ${url}=    Set Global Variable    ${url}
+    ${response}=    Get Request    file_check    ${url}
+    Should Be Equal As Strings    ${response.status_code}    200
+
+Download Object From S3 Bucket
+    [Arguments]    ${bucket_name}    ${object_key}    ${filepath}
+    [Documentation]    Downloads an object from an S3 bucket using AWS CLI.
+    Run Keyword And Ignore Error    aws s3 cp s3://${BUCKET_NAME}/${OBJECT_KEY} ${LOCAL_FILE_PATH}
+    Run Keyword If    "${RC}" != "0"    Fail    Failed to download object from S3 bucket.

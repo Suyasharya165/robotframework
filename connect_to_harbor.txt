@@ -1,0 +1,66 @@
+*** Settings ***
+Documentation     Common Configuration file for all application
+Library           Process
+Library           Collections
+Library           OperatingSystem
+Library           String
+Library           RequestsLibrary
+Library           JSONLibrary
+Library           SSHLibrary
+Library           Process
+Library           yaml
+Library           CSVLibrary
+
+*** Keywords ***
+init
+    [Documentation]    Keyword to fetch the api url from the command line argument
+    Run Keyword If    "${Server}"=="StagingServer"    Set Global Variable    ${ServerIp}    ${StagingServerIp}
+
+Open Session
+    [Documentation]    Keyword to login to the session where emulator program is going to execute
+    ${SessionIndex}=    Open Connection    ${HostIp}    port= ${HostPort}    timeout=120s
+    Login    username=${LocalUserName}    password=${LocalPassword}    delay=1s
+    Set Global Variable    ${SessionIndex}
+
+Login to Docker Registry
+    [Arguments]    ${DOCKER_REGISTRY_URL}    ${DOCKER_USERNAME}    ${DOCKER_PASSWORD}
+    ${cmd} =    Set Variable    docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD} ${DOCKER_REGISTRY_URL}
+    ${result} =    Run Process    ${cmd}    shell=True
+    Log    Docker Login Output: ${result.stdout}
+    Should Be Equal As Strings    ${result.rc}    0    # Ensure command executed successfully
+
+Connect_to_harbor
+    [Arguments]    ${harbor_registry}    ${username}    ${password}
+    ${output}=    Run Process    docker login ${harbor_registry} -u <username> -p <password>    shell=True
+    Should Contain    ${output}    Login Succeeded
+
+Pull Image from Harbor
+    [Arguments]    ${harbor_registry}    ${image_name}    ${tag}
+    ${output}=    Run Process    docker pull ${harbor_registry}/${image_name}:${tag}    shell=True
+    Should Contain    ${output}    Downloaded newer image for
+
+Verify Image Download
+    [Arguments]    ${image_name}
+    ${output}=    Run Process    docker images | grep <image-name>    shell=True
+    Should Contain    ${output}    <image-name>
+
+deploy_image
+    [Arguments]    ${container_name}    ${harbor_registry}    ${image_name}    ${tag}
+    ${output}=    Run Process    docker run -d --name ${container_name} ${harbor_registry}/${image_name}:${tag}    shell=True
+    Should Not Be Empty    ${output}
+    Log    Container ID: ${output}
+
+pull_image_with_CSV_file
+    [Arguments]    ${csv_filepath}
+    ${dict}=    read_csv_file_to_associative    ${csv_file_path}
+    log    ${dict}
+    ${lines}=    Get Length    ${dict}
+    :FOR    ${index}    IN RANGE    0    ${lines}
+    \    ${image_name}=    Get From List    ${dict}    ${index}
+    \    ${image}=    Get From Dictionary    ${image_name}    image_name
+    \    Set Global Variable    ${image}
+    \    ${tag}=    Get From Dictionary    ${image_name}    tag
+    \    Set Global Variable    ${tag}
+    \    ${output}=    Run Process    docker pull ${harbor_registry}/${image}:${tag}    shell=True
+    \    Comment    Should Contain    ${output}    Downloaded newer image for
+    END
